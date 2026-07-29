@@ -1,0 +1,6 @@
+venv/
+venv_new/
+dataset/
+__pycache__/
+*.pt
+*.sqlite3node_modules/

@@ -1,0 +1,9 @@
+{
+  "appId": "com.musaef.app",
+  "appName": "musef",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http",
+    "iosScheme": "http"
+  }
+}

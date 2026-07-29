@@ -1,0 +1,61 @@
+{% extends "admin/change_form.html" %}
+
+{% block after_field_sets %}
+{{ block.super }}
+
+<div style="margin: 20px 0;">
+  <h2>📍 تحديد الموقع على الخريطة</h2>
+  <div id="map" style="height: 400px; border-radius: 8px; border: 2px solid #444;"></div>
+  <p style="color: #aaa; margin-top: 8px;">انقر على الخريطة لتحديد موقع المتطوع تلقائياً</p>
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    // اقرأ القيم الحالية من الحقول
+    const latField = document.getElementById('id_latitude');
+    const lonField = document.getElementById('id_longitude');
+
+    const initLat = parseFloat(latField.value) || 32.8872;
+    const initLon = parseFloat(lonField.value) || 13.1913;
+
+    // أنشئ الخريطة
+    const map = L.map('map').setView([initLat, initLon], 13);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: 'OpenStreetMap'
+    }).addTo(map);
+
+    // ماركر قابل للسحب
+    let marker = L.marker([initLat, initLon], { draggable: true }).addTo(map);
+
+    // تحديث الحقول عند السحب
+    marker.on('dragend', function (e) {
+      const pos = e.target.getLatLng();
+      latField.value = pos.lat.toFixed(6);
+      lonField.value = pos.lng.toFixed(6);
+    });
+
+    // تحديث عند النقر على الخريطة
+    map.on('click', function (e) {
+      marker.setLatLng(e.latlng);
+      latField.value = e.latlng.lat.toFixed(6);
+      lonField.value = e.latlng.lng.toFixed(6);
+    });
+
+    // تحديث الخريطة عند كتابة في الحقول يدوياً
+    [latField, lonField].forEach(field => {
+      field.addEventListener('change', function () {
+        const lat = parseFloat(latField.value);
+        const lon = parseFloat(lonField.value);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          marker.setLatLng([lat, lon]);
+          map.setView([lat, lon], 13);
+        }
+      });
+    });
+  });
+</script>
+{% endblock %}

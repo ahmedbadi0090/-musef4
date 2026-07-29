@@ -1,0 +1,39 @@
+workflows:
+  ios-simulator-build:
+    name: Musaef iOS Simulator Build
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      cocoapods: default
+      node: 22
+    scripts:
+      - name: Install npm dependencies
+        script: |
+          cd frontend
+          npm install
+      - name: Build web assets
+        script: |
+          cd frontend
+          npm run build
+      - name: Add and Sync Capacitor iOS
+        script: |
+          cd frontend
+          npx cap add ios || true
+          npx cap sync ios
+      - name: Build iOS app for Simulator (no code signing)
+        script: |
+          cd frontend/ios/App
+          # استخدام project بدلاً من workspace لتجنب خطأ الملف المفقود
+          xcodebuild -project App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO
+    artifacts:
+      - frontend/ios/App/build/**/*.app
+    publishing:
+      email:
+        recipients:
+          - ahmedmbadi0090@gmail.com
