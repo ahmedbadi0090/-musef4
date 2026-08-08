@@ -4,3 +4,6 @@ dataset/
 __pycache__/
 *.pt
 *.sqlite3node_modules/
+.env 
+musef_backend/musef-app-firebase-adminsdk-fbsvc-fdc195413b.json
+frontend/android/app/google-services.json

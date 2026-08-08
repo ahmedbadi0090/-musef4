@@ -12,7 +12,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from .serializers import RegisterSerializer, UserSerializer, IncidentSerializer
-from .models import User, Incident, PushSubscription
+from .models import User, Incident, PushSubscription, FCMDevice
+import firebase_admin
+from firebase_admin import messaging
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +35,34 @@ def send_push_notification(user, incident, title="طلب استغاثة طارئ
         logger.warning(f"No push subscriptions for user {user.username}")
         return
         
+    # Calculate distance if coordinates are available
+    dist_str = ""
+    if user.latitude and user.longitude and incident.latitude and incident.longitude:
+        try:
+            dist = haversine(user.latitude, user.longitude, incident.latitude, incident.longitude)
+            dist_str = f"المسافة: {dist:.2f} كم"
+        except Exception as e:
+            logger.error(f"Error calculating haversine for push: {e}")
+            
+    location_str = f"الموقع: {incident.latitude:.4f}, {incident.longitude:.4f}"
+    phone_str = f"الهاتف: {incident.reporter.phone or 'غير مسجل'}"
+    reporter_str = f"المستغيث: {incident.reporter.username}"
+    
+    parts = [reporter_str, phone_str, location_str]
+    if dist_str:
+        parts.append(dist_str)
+        
+    body_text = " | ".join(parts)
+    if incident.injury_type:
+        body_text += f"\nالتفاصيل: {incident.injury_type[:50]}..."
+        
     payload = {
         "title": title,
-        "body": body if body else (f"ملاحظة: {incident.injury_type[:50]}..." if incident.injury_type else "طلب استغاثة جديد بدون تفاصيل."),
+        "body": body_text,
         "incidentId": incident.id,
         "assignedVolunteer": incident.volunteer.username if incident.volunteer else None,
         "assignedVolunteerPhone": incident.volunteer.phone if incident.volunteer else None,
-        "url": "/dashboard",
+        "url": f"/dashboard?incidentId={incident.id}",
         "type": push_type
     }
     
@@ -73,6 +96,40 @@ def send_push_notification(user, incident, title="طلب استغاثة طارئ
                 sub.delete()
         except Exception as e:
             logger.error(f"Failed to send push: {e}")
+
+    # Send FCM push notifications
+    fcm_devices = FCMDevice.objects.filter(user=user)
+    if fcm_devices.exists():
+        fcm_payload = {
+            "title": title,
+            "body": body_text,
+            "incidentId": str(incident.id),
+            "assignedVolunteer": str(incident.volunteer.username) if incident.volunteer else "",
+            "assignedVolunteerPhone": str(incident.volunteer.phone) if incident.volunteer else "",
+            "url": f"/dashboard?incidentId={incident.id}",
+            "type": push_type
+        }
+        for device in fcm_devices:
+            message = messaging.Message(
+                notification=messaging.Notification(
+                    title=fcm_payload["title"],
+                    body=fcm_payload["body"],
+                ),
+                data=fcm_payload,
+                token=device.token,
+                android=messaging.AndroidConfig(
+                    priority='high',
+                    notification=messaging.AndroidNotification(
+                        channel_id='emergency_alerts',
+                        sound='alarm.wav'
+                    )
+                )
+            )
+            try:
+                response = messaging.send(message)
+                logger.info(f"Successfully sent FCM message: {response}")
+            except Exception as e:
+                logger.error(f"Error sending FCM message: {e}")
 
 def send_push_notification_async(user_id, incident_id, title="طلب استغاثة طارئ! 🚨", body=None, push_type="EMERGENCY_PUSH"):
     def run():
@@ -135,7 +192,7 @@ def analyze_injury(request):
             image_data = base64.b64encode(f.read()).decode('utf-8')
 
         from groq import Groq
-        groq_key = os.getenv("GROQ_API_KEY", "1")
+        groq_key = os.getenv("GROQ_API_KEY", "")
         client = Groq(api_key=groq_key)
 
         # Check if there is any real injury detected
@@ -375,6 +432,21 @@ def subscribe_push(request):
         
     return Response({"message": "تم الاشتراك في الإشعارات بنجاح ✅"})
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def register_fcm_token(request):
+    token = request.data.get('token')
+    if not token:
+        return Response({"error": "Token is required"}, status=400)
+    
+    device, created = FCMDevice.objects.get_or_create(token=token, defaults={'user': request.user})
+    if not created and device.user != request.user:
+        device.user = request.user
+        device.save()
+        
+    return Response({"message": "تم تسجيل الجهاز للإشعارات بنجاح ✅"})
+
+
 @api_view(['GET'])
 def get_vapid_key(request):
     return Response({
@@ -389,7 +461,7 @@ def medical_chat(request):
         return Response({"error": "الرجاء إدخال سؤالك"}, status=400)
 
     from groq import Groq
-    groq_key = os.getenv("GROQ_API_KEY","1")
+    groq_key = os.getenv("GROQ_API_KEY","")
     client = Groq(api_key=groq_key)
 
     try:
@@ -405,7 +477,7 @@ def medical_chat(request):
                         "1. عنوان واضح يحدد الحالة الطبية.\n"
                         "2. خطوات إسعافية واضحة ومرقمة بأسلوب نقاط.\n"
                         "3. تحذيرات طبية هامة (تنبيهات عما يجب تجنبه).\n"
-                        "4. تنويه بضرورة استشارة الطبيب أو الاتصال بالإسعاف (1213) إذا كانت الحالة خطيرة.\n"
+                        "4. تنويه بضرورة استشارة الطبيب أو الاتصال بالإسعاف (1412) إذا كانت الحالة خطيرة.\n"
                         "اجعل الرد ملخصاً ومنظماً جداً لسهولة القراءة في الحالات الطارئة ومكتوب بلغة عربية مبسطة."
                     )
                 },

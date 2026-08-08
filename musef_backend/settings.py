@@ -1,6 +1,20 @@
 from pathlib import Path
+from dotenv import load_dotenv
+
 import os
 import dj_database_url
+
+
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / '.env')
+
+SECRET_KEY = os.getenv('SECRET_KEY')
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
+
+
+
 
 # 1. المجلد الرئيسي للمشروع
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -9,7 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-lo34f#*t9g2nn__z78z!15!^p%7juru%stlgz#^b_qvy_$-%r@'
 
 DEBUG = True
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '10.0.2.2', '172.20.10.2']
+ALLOWED_HOSTS = ['*']
 # 3. التطبيقات المثبتة (مدمجة جميعاً هنا)
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -96,3 +110,16 @@ AUTH_USER_MODEL = 'core.User'
 # Media files
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Initialize Firebase Admin SDK
+import firebase_admin
+from firebase_admin import credentials
+
+FIREBASE_KEY_PATH = BASE_DIR / 'musef_backend' / 'musef-app-firebase-adminsdk-fbsvc-fdc195413b.json'
+if FIREBASE_KEY_PATH.exists():
+    try:
+        cred = credentials.Certificate(str(FIREBASE_KEY_PATH))
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(cred)
+    except Exception as e:
+        print("Failed to initialize Firebase:", e)

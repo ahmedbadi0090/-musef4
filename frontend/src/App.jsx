@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
+import { PushNotifications } from '@capacitor/push-notifications'
+import { Capacitor } from '@capacitor/core'
 import Dashboard from './pages/Dashboard'
 import Home from './pages/Home'
 import Login from './pages/Login'
@@ -80,6 +82,14 @@ export default function App() {
   const stopAlarm = () => {
     _haltAlarm();
     setAlarmActive(false);
+
+    if (_getTabRole() === 'government') {
+      API.get('/api/alerts/').then(res => {
+         const currentAlerts = res.data.map(a => a.id);
+         const muted = JSON.parse(localStorage.getItem('mutedGovAlerts') || '[]');
+         localStorage.setItem('mutedGovAlerts', JSON.stringify([...new Set([...muted, ...currentAlerts])]));
+      }).catch(err => console.error(err));
+    }
   };
 
   const checkGlobalAlerts = async () => {
@@ -107,8 +117,9 @@ export default function App() {
             !alert.is_declined_by_me
         );
       } else if (role === 'government') {
+        const muted = JSON.parse(localStorage.getItem('mutedGovAlerts') || '[]');
         hasPending = alerts.some(
-          alert => alert.gov_responder_username !== username && alert.status !== 'resolved'
+          alert => alert.status !== 'resolved' && !muted.includes(alert.id)
         );
       }
 
@@ -131,12 +142,61 @@ export default function App() {
   };
 
   useEffect(() => {
-    // ── Service Worker registration ──────────────────────────────────────────
+    // ── Service Worker registration (Web) ────────────────────────────────────
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js')
         .then(reg => console.log('SW registered:', reg.scope))
         .catch(err => console.error('SW registration failed:', err));
     }
+
+    // ── Native Push Notifications (Capacitor FCM) ────────────────────────────
+    const setupNativePush = async () => {
+      if (!Capacitor.isNativePlatform()) return;
+      
+      let permStatus = await PushNotifications.checkPermissions();
+      if (permStatus.receive === 'prompt') {
+        permStatus = await PushNotifications.requestPermissions();
+      }
+      if (permStatus.receive !== 'granted') return;
+      
+      try {
+        await PushNotifications.createChannel({
+          id: 'emergency_alerts',
+          name: 'Emergency Alerts',
+          description: 'تنبيهات الحالات الطارئة',
+          importance: 5,
+          visibility: 1,
+          sound: 'alarm.wav',
+          vibration: true
+        });
+      } catch (err) {
+        console.warn('Error creating push channel:', err);
+      }
+      
+      await PushNotifications.register();
+      
+      PushNotifications.addListener('registration', (token) => {
+        const jwt = localStorage.getItem('token');
+        if (jwt) {
+          API.post('/api/push/fcm-token/', { token: token.value }).catch(console.error);
+        }
+      });
+      
+      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        if (notification.data && notification.data.type === 'EMERGENCY_PUSH') {
+          playAlarm(notification.data.assignedVolunteer);
+          window.dispatchEvent(new CustomEvent('refetch-alerts'));
+        } else if (notification.data && notification.data.type === 'SOS_UPDATE') {
+          window.dispatchEvent(new CustomEvent('sos-update', { detail: notification.data }));
+        }
+      });
+      
+      PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+        const url = notification.notification.data.url;
+        if (url) window.location.href = url;
+      });
+    };
+    setupNativePush();
 
     // ── Handle push messages from Service Worker ─────────────────────────────
     const handleSWMessage = (event) => {

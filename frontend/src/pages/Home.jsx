@@ -31,7 +31,7 @@ const AI_KNOWLEDGE = [
     title: 'إسعاف حالات التسمم 🧪',
     steps: [
       'حدد المادة السامة وكميتها والوقت التقريبي لابتلاعها.',
-      'اتصل بالإسعاف فوراً (1213).',
+      'اتصل بالإسعاف فوراً (1412).',
       'لا تحاول إجبار المصاب على التقيؤ إطلاقاً.',
       'إذا كانت المادة على الجلد أو العينين، اغسلها بماء جارٍ 15 دقيقة.',
       'احتفظ بعبوة المادة السامة للكادر الطبي.'
@@ -45,7 +45,7 @@ const AI_KNOWLEDGE = [
       'افصل التيار الكهربائي من القاطع الرئيسي.',
       'استخدم أداة خشبية لإبعاد المصاب عن السلك.',
       'تأكد من تنفسه ونبضه.',
-      'ابدأ CPR إذا لزم، واتصل بالإسعاف 1213.'
+      'ابدأ CPR إذا لزم، واتصل بالإسعاف 1412.'
     ]
   }
 ]
@@ -109,6 +109,7 @@ export default function Home() {
   const [aiLoading, setAiLoading] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [isSosModalOpen, setIsSosModalOpen] = useState(false)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   useEffect(() => {
     API.get('/api/profile/')
@@ -131,6 +132,10 @@ export default function Home() {
   }, [navigate])
 
   const handleLogout = () => {
+    setShowLogoutConfirm(true)
+  }
+
+  const confirmLogout = () => {
     localStorage.clear()
     sessionStorage.clear()
     navigate('/login')
@@ -277,6 +282,77 @@ export default function Home() {
 
   return (
     <div style={styles.page}>
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(10, 10, 12, 0.8)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#16161a',
+            border: '1.5px solid #2d2d37',
+            borderRadius: '24px',
+            padding: '32px 24px',
+            maxWidth: '420px',
+            width: '100%',
+            boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+            textAlign: 'center',
+            fontFamily: 'Cairo, sans-serif',
+            direction: 'rtl'
+          }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚪</div>
+            <h3 style={{ color: '#f0f0f5', fontSize: '22px', margin: '0 0 12px 0', fontWeight: 800 }}>تسجيل الخروج</h3>
+            <p style={{ color: '#9090a8', fontSize: '16px', margin: '0 0 28px 0', lineHeight: '1.6' }}>
+              هل أنت متأكد من رغبتك في تسجيل الخروج من التطبيق؟
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={confirmLogout}
+                style={{
+                  flex: 1,
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '14px',
+                  padding: '14px',
+                  fontSize: '16px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 6px 20px rgba(239, 68, 68, 0.3)'
+                }}
+              >
+                نعم، متأكد
+              </button>
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{
+                  flex: 1,
+                  background: '#2d2d37',
+                  color: '#f0f0f5',
+                  border: 'none',
+                  borderRadius: '14px',
+                  padding: '14px',
+                  fontSize: '16px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Profile Modal */}
       {showProfile && user && (
         <ProfileModal
@@ -445,50 +521,21 @@ export default function Home() {
           </div>
         )}
 
-        <div style={styles.locationCard} onClick={requestLocation}>
-          <div style={styles.locIcon}>📍</div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '14px', fontWeight: 700 }}>موقعك الحالي</div>
-            <div style={{ fontSize: '12px', color: '#9090a8', marginTop: '2px' }}>
-              {locStatus === 'idle' && 'اضغط لتفعيل وتحديث موقعك'}
-              {locStatus === 'loading' && 'جاري تحديد إحداثياتك بدقة...'}
-              {locStatus === 'done' && `الموقع مفعّل: ${location.lat.toFixed(4)}، ${location.lon.toFixed(4)}`}
-              {locStatus === 'error' && 'تعذر تحديد الموقع الجغرافي'}
+        <div style={styles.guideCard} onClick={() => navigate('/guide')}>
+          <div style={{ flex: 1, textAlign: 'right' }}>
+            <div style={{ fontSize: '16px', fontWeight: 800, color: '#f0f0f5' }}>دليل الإسعافات الأولية (بدون اتصال) 📚</div>
+            <div style={{ fontSize: '12px', color: '#9090a8', marginTop: '4px', lineHeight: '1.5' }}>
+              دليل إسعافات شامل لجميع الإصابات والحالات الطارئة يعمل دون اتصال بالإنترنت
             </div>
           </div>
-          <div style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '20px', fontWeight: 600, background: locStatus === 'done' ? 'rgba(34,197,94,0.15)' : 'rgba(144,144,168,0.15)', color: locStatus === 'done' ? '#22C55E' : '#9090a8' }}>
-            {locStatus === 'done' ? 'مفعّل ✓' : 'غير مفعّل'}
-          </div>
-        </div>
-
-        <div style={styles.sectionTitle}>كتالوج حالات الطوارئ السريع:</div>
-
-        <div style={styles.emergencies}>
-          {filteredEmergencies.length === 0 ? (
-            <div style={styles.noResults}>لا توجد نتائج مطابقة، جرب البحث عن كلمات مثل "رعاف"، "تسمم"، "نزيف"</div>
-          ) : (
-            filteredEmergencies.map(emg => (
-              <div key={emg.id} style={styles.emgCard} onClick={() => navigate(`/guide/${emg.id}`)}>
-                <div style={{ textAlign: 'right', flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span style={styles.emgName}>{emg.name}</span>
-                    <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '8px', background: emg.color, color: emg.badgeColor, border: `1px solid ${emg.badgeColor}40` }}>
-                      {emg.severityText}
-                    </span>
-                  </div>
-                  <div style={styles.emgDesc}>{emg.desc}</div>
-                </div>
-                <div style={{ ...styles.emgIcon, background: emg.color }}>{emg.icon}</div>
-              </div>
-            ))
-          )}
+          <div style={{ fontSize: '32px', marginRight: '16px' }}>📖</div>
         </div>
 
         <div style={styles.sosSection}>
           <div style={{ fontSize: '16px', fontWeight: 800, color: '#E8192C' }}>⚠️ هل تحتاج إسعاف رسمي؟</div>
           <div style={{ fontSize: '12px', color: '#9090a8', margin: '6px 0 16px' }}>اضغط للاتصال المباشر بغرفة عمليات الهلال الأحمر والإسعاف</div>
-          <a href="tel:1213" style={{ textDecoration: 'none' }}>
-            <button style={styles.callBtn}>📞 1213 — الاتصال بالإسعاف</button>
+          <a href="tel:1412" style={{ textDecoration: 'none' }}>
+            <button style={styles.callBtn}>📞 1412 — الاتصال بالإسعاف</button>
           </a>
         </div>
 
@@ -599,15 +646,7 @@ const styles = {
   aiResponseSteps: { display: 'flex', flexDirection: 'column', gap: '12px' },
   aiResponseStep: { display: 'flex', alignItems: 'flex-start', gap: '10px' },
   stepNumIcon: { width: '22px', height: '22px', borderRadius: '50%', background: 'rgba(167,139,250,0.15)', border: '1px solid #a78bfa', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, color: '#a78bfa', flexShrink: 0 },
-  locationCard: { margin: '14px 16px 0', background: '#1c1c22', borderRadius: '18px', padding: '16px', display: 'flex', alignItems: 'center', gap: '14px', border: '1.5px solid #2d2d37', cursor: 'pointer' },
-  locIcon: { width: '40px', height: '40px', background: 'rgba(59,130,246,0.15)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' },
-  sectionTitle: { fontSize: '16px', fontWeight: 800, color: '#f0f0f5', margin: '24px 16px 14px' },
-  emergencies: { padding: '0 16px', display: 'flex', flexDirection: 'column', gap: '12px' },
-  noResults: { color: '#9090a8', textAlign: 'center', padding: '30px 10px', fontSize: '13px', lineHeight: '1.6' },
-  emgCard: { background: '#1c1c22', borderRadius: '18px', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', border: '1.5px solid transparent', transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' },
-  emgName: { fontSize: '15px', fontWeight: 800, color: '#f0f0f5' },
-  emgDesc: { fontSize: '12px', color: '#9090a8', marginTop: '4px' },
-  emgIcon: { width: '48px', height: '48px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', flexShrink: 0 },
+  guideCard: { margin: '14px 16px 0', background: '#1c1c22', borderRadius: '22px', padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', boxShadow: '0 12px 30px rgba(0,0,0,0.15)', color: 'white', border: '1.5px solid #2d2d37', transition: 'transform 0.2s' },
   sosSection: { margin: '24px 16px 0', background: 'rgba(232,25,44,0.05)', border: '1.5px solid rgba(232,25,44,0.15)', borderRadius: '20px', padding: '20px', textAlign: 'center' },
   callBtn: { background: '#E8192C', color: 'white', border: 'none', borderRadius: '14px', padding: '14px 24px', fontFamily: 'Cairo, sans-serif', fontSize: '16px', fontWeight: 800, cursor: 'pointer', width: '100%', boxShadow: '0 6px 18px rgba(232,25,44,0.3)' },
   disclaimer: { margin: '14px 16px 0', background: 'rgba(249,115,22,0.05)', border: '1.5px solid rgba(249,115,22,0.15)', borderRadius: '16px', padding: '14px', fontSize: '12px', color: '#9090a8', lineHeight: 1.7 },

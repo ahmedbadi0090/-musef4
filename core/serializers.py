@@ -3,16 +3,32 @@ from .models import User
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    phone = serializers.CharField(required=True)
     
     class Meta:
         model = User
         fields = ['username', 'email', 'password', 'phone', 'role', 'region']
     
+    def validate_phone(self, value):
+        if not value or value.strip() == "":
+            raise serializers.ValidationError("رقم الهاتف إلزامي.")
+        return value
+
+    def validate_email(self, value):
+        if value:
+            if User.objects.filter(email__iexact=value).exists():
+                raise serializers.ValidationError("هذا البريد مسجل مسبقاً ولا يمكن إدخاله مرة أخرى.")
+        return value
+
     def create(self, validated_data):
         user = User.objects.create_user(**validated_data)
         return user
 
 class UserSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    phone = serializers.CharField(required=True)
+
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'phone', 'role', 
@@ -21,6 +37,21 @@ class UserSerializer(serializers.ModelSerializer):
                   'other_medical_notes'
                   ,'first_name', 'last_name'
                   ]
+
+    def validate_phone(self, value):
+        if not value or value.strip() == "":
+            raise serializers.ValidationError("رقم الهاتف إلزامي.")
+        return value
+
+    def validate_email(self, value):
+        if value:
+            user = self.instance
+            qs = User.objects.filter(email__iexact=value)
+            if user:
+                qs = qs.exclude(id=user.id)
+            if qs.exists():
+                raise serializers.ValidationError("هذا البريد مسجل مسبقاً ولا يمكن إدخاله مرة أخرى.")
+        return value
 
 from .models import Incident
 

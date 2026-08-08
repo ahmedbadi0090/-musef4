@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import API from '../api'
 import BottomNav from '../components/BottomNav'
 
@@ -24,11 +24,16 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const token = localStorage.getItem('token')
   const [user, setUser] = useState(null)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [isAvailable, setIsAvailable] = useState(true)
   const [activeAlerts, setActiveAlerts] = useState([])
   const [locationSent, setLocationSent] = useState(false)
   const [selectedTab, setSelectedTab] = useState('pending')
   const [toast, setToast] = useState(null)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+
+  const queryIncidentId = searchParams.get('incidentId')
+  const focusedAlert = activeAlerts.find(a => String(a.id) === String(queryIncidentId))
   
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -68,7 +73,7 @@ export default function Dashboard() {
 
       // Post the subscription payload to Django
       await API.post('/api/push/subscribe/', subscription.toJSON());
-      console.log('Registered volunteer Web Push subscription successfully ✅');
+      console.log('Registered Web Push subscription successfully ✅');
     } catch (err) {
       console.error('Failed to register Web Push subscription:', err);
     }
@@ -101,8 +106,8 @@ export default function Dashboard() {
         sessionStorage.setItem('username', res.data.username)
         if (res.data.role !== 'volunteer' && res.data.role !== 'government') {
           navigate('/')
-        } else if (res.data.role === 'volunteer') {
-          // Volunteer active, register for push
+        } else {
+          // Volunteer or Government active, register for push
           subscribeToPushNotifications();
         }
       })
@@ -220,6 +225,10 @@ export default function Dashboard() {
   }
 
   const handleLogout = () => {
+    setShowLogoutConfirm(true)
+  }
+
+  const confirmLogout = () => {
     localStorage.clear()
     sessionStorage.clear()
     navigate('/login')
@@ -235,14 +244,14 @@ export default function Dashboard() {
     if (user && user.role === 'volunteer') {
       return alert.status === 'pending' && (alert.volunteer_username === user.username || !alert.volunteer_username) && !alert.is_declined_by_me;
     }
-    return alert.gov_responder_username !== user.username && alert.status !== 'resolved';
+    return alert.status !== 'resolved';
   }).length;
 
   const acceptedCount = activeAlerts.filter(alert => {
     if (user && user.role === 'volunteer') {
       return (alert.status === 'active' || alert.status === 'resolved') && alert.volunteer_username === user.username;
     }
-    return alert.gov_responder_username === user.username || alert.status === 'resolved';
+    return alert.status === 'resolved';
   }).length;
 
   const rejectedCount = activeAlerts.filter(alert => {
@@ -253,16 +262,17 @@ export default function Dashboard() {
   }).length;
 
   const filteredAlerts = activeAlerts.filter(alert => {
+    if (user && user.role === 'government') return true;
     if (selectedTab === 'pending') {
       if (user && user.role === 'volunteer') {
         return alert.status === 'pending' && (alert.volunteer_username === user.username || !alert.volunteer_username) && !alert.is_declined_by_me;
       }
-      return alert.gov_responder_username !== user.username && alert.status !== 'resolved';
+      return false;
     } else if (selectedTab === 'accepted') {
       if (user && user.role === 'volunteer') {
         return (alert.status === 'active' || alert.status === 'resolved') && alert.volunteer_username === user.username;
       }
-      return alert.gov_responder_username === user.username || alert.status === 'resolved';
+      return false;
     } else if (selectedTab === 'rejected') {
       if (user && user.role === 'volunteer') {
         return alert.is_declined_by_me;
@@ -276,6 +286,282 @@ export default function Dashboard() {
 
   return (
     <div style={{ ...styles.page, maxWidth: user.role === 'government' ? '100%' : '550px' }}>
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(10, 10, 12, 0.8)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#16161a',
+            border: '1.5px solid #2d2d37',
+            borderRadius: '24px',
+            padding: '32px 24px',
+            maxWidth: '420px',
+            width: '100%',
+            boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+            textAlign: 'center',
+            fontFamily: 'Cairo, sans-serif',
+            direction: 'rtl'
+          }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚪</div>
+            <h3 style={{ color: '#f0f0f5', fontSize: '22px', margin: '0 0 12px 0', fontWeight: 800 }}>تسجيل الخروج</h3>
+            <p style={{ color: '#9090a8', fontSize: '16px', margin: '0 0 28px 0', lineHeight: '1.6' }}>
+              هل أنت متأكد من رغبتك في تسجيل الخروج من التطبيق؟
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={confirmLogout}
+                style={{
+                  flex: 1,
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '14px',
+                  padding: '14px',
+                  fontSize: '16px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 6px 20px rgba(239, 68, 68, 0.3)'
+                }}
+              >
+                نعم، متأكد
+              </button>
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{
+                  flex: 1,
+                  background: '#2d2d37',
+                  color: '#f0f0f5',
+                  border: 'none',
+                  borderRadius: '14px',
+                  padding: '14px',
+                  fontSize: '16px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Case Details Modal */}
+      {user && focusedAlert && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(10, 10, 12, 0.85)',
+          backdropFilter: 'blur(10px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '16px'
+        }} onClick={() => navigate('/dashboard')}>
+          <div style={{
+            background: '#16161a',
+            border: '1.5px solid #2d2d37',
+            borderRadius: '24px',
+            padding: '24px',
+            maxWidth: '500px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+            fontFamily: 'Cairo, sans-serif',
+            direction: 'rtl'
+          }} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #2d2d37', paddingBottom: '12px', marginBottom: '16px' }}>
+              <h3 style={{ color: '#f0f0f5', fontSize: '20px', margin: 0, fontWeight: 800 }}>
+                📋 تفاصيل حالة الاستغاثة
+              </h3>
+              <button 
+                onClick={() => navigate('/dashboard')}
+                style={{
+                  background: '#2d2d37',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '32px',
+                  height: '32px',
+                  color: '#9090a8',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <span style={{ fontSize: '13px', color: '#9090a8' }}>نوع الإصابة:</span>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: '#f87171', marginTop: '2px' }}>
+                  {focusedAlert.injury_type || 'طلب استغاثة طارئ 🚨'}
+                </div>
+              </div>
+
+              <div style={{ background: '#1c1c22', borderRadius: '16px', padding: '16px', border: '1px solid #2d2d37', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div>
+                  <strong style={{ color: '#f0f0f5' }}>👤 اسم المستغيث:</strong> <span style={{ color: '#e5e7eb' }}>{focusedAlert.reporter_username}</span>
+                </div>
+                {focusedAlert.reporter_phone && (
+                  <div>
+                    <strong style={{ color: '#f0f0f5' }}>📞 رقم الهاتف:</strong> <a href={`tel:${focusedAlert.reporter_phone}`} onClick={e => e.stopPropagation()} style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 700 }}>{focusedAlert.reporter_phone}</a>
+                  </div>
+                )}
+                {focusedAlert.reporter_blood_type && (
+                  <div>
+                    <strong style={{ color: '#f0f0f5' }}>🩸 فصيلة الدم:</strong> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{focusedAlert.reporter_blood_type}</span>
+                  </div>
+                )}
+                {focusedAlert.reporter_chronic_diseases && (
+                  <div>
+                    <strong style={{ color: '#f0f0f5' }}>🩺 أمراض مزمنة:</strong> <span style={{ color: '#e5e7eb' }}>{focusedAlert.reporter_chronic_diseases}</span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <span style={{ fontSize: '13px', color: '#9090a8' }}>📍 الموقع الجغرافي:</span>
+                <div style={{ marginTop: '6px' }}>
+                  <a 
+                    href={`https://www.google.com/maps?q=${focusedAlert.latitude},${focusedAlert.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: 'rgba(59,130,246,0.1)',
+                      border: '1px solid rgba(59,130,246,0.3)',
+                      color: '#3b82f6',
+                      borderRadius: '12px',
+                      padding: '10px 14px',
+                      fontSize: '13px',
+                      textDecoration: 'none',
+                      fontWeight: 700,
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      justifyContent: 'center'
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    🗺️ فتح الموقع الجغرافي على خرائط Google
+                  </a>
+                </div>
+              </div>
+
+              {/* Multimedia */}
+              {focusedAlert.image && (
+                <div>
+                  <span style={{ fontSize: '13px', color: '#9090a8' }}>🖼️ الصورة المرفقة:</span>
+                  <div style={{ width: '100%', maxHeight: '200px', overflow: 'hidden', borderRadius: '14px', marginTop: '6px', border: '1px solid #2d2d37' }}>
+                    <img 
+                      src={resolveMediaUrl(focusedAlert.image)} 
+                      alt="injury" 
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
+                      onClick={(e) => { e.stopPropagation(); window.open(resolveMediaUrl(focusedAlert.image), '_blank'); }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {focusedAlert.voice_note && (
+                <div>
+                  <span style={{ fontSize: '13px', color: '#9090a8' }}>🔊 التسجيل الصوتي المرفق:</span>
+                  <div style={{ marginTop: '6px' }} onClick={e => e.stopPropagation()}>
+                    <audio 
+                      src={resolveMediaUrl(focusedAlert.voice_note)} 
+                      controls 
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Actions & Status */}
+              <div style={{ borderTop: '1px solid #2d2d37', paddingTop: '16px', marginTop: '8px' }}>
+                {focusedAlert.status === 'pending' && user.role === 'volunteer' && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); acceptAlert(focusedAlert.id); navigate('/dashboard'); }}
+                    style={{
+                      width: '100%',
+                      background: 'linear-gradient(135deg, #10b981, #059669)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '12px',
+                      padding: '14px',
+                      fontSize: '15px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 12px rgba(16,185,129,0.3)'
+                    }}
+                  >
+                    🚑 قبول الاستجابة للحالة
+                  </button>
+                )}
+
+                {focusedAlert.status === 'active' && focusedAlert.volunteer_username === user.username && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ textAlign: 'center', color: '#10b981', fontWeight: 700, fontSize: '14px' }}>
+                      🟢 أنت مستجيب لهذه الحالة حالياً (جاري التوجه)
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); declineAlert(focusedAlert.id); navigate('/dashboard'); }}
+                      style={{
+                        width: '100%',
+                        background: '#dc2626',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '12px',
+                        padding: '12px',
+                        fontSize: '14px',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ❌ إلغاء الاستجابة والرفض
+                    </button>
+                  </div>
+                )}
+
+                {focusedAlert.status === 'active' && focusedAlert.volunteer_username !== user.username && (
+                  <div style={{ textAlign: 'center', color: '#10b981', fontWeight: 700, fontSize: '14px' }}>
+                    👥 تم الاستجابة للحالة من قبل المسعف: {focusedAlert.volunteer_username}
+                  </div>
+                )}
+
+                {focusedAlert.status === 'resolved' && (
+                  <div style={{ textAlign: 'center', color: '#9090a8', fontWeight: 700, fontSize: '14px' }}>
+                    ✓ تم حل هذه الحالة وإغلاقها بنجاح
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerTop}>
@@ -331,58 +617,66 @@ export default function Dashboard() {
         {/* Stats Grid */}
         <div style={{
           ...styles.statsGrid,
-          gridTemplateColumns: user.role === 'government' ? '1fr 1fr' : '1fr 1fr 1fr'
+          gridTemplateColumns: user.role === 'government' ? '1fr' : '1fr 1fr 1fr'
         }}>
-          <div style={styles.statCard}>
-            <span style={styles.statIcon}>🚨</span>
-            <span style={styles.statVal}>{pendingCount}</span>
-            <span style={styles.statLabel}>بلاغات معلقة</span>
-          </div>
-          <div style={styles.statCard}>
-            <span style={styles.statIcon}>✅</span>
-            <span style={styles.statVal}>{acceptedCount}</span>
-            <span style={styles.statLabel}>بلاغات مقبولة</span>
-          </div>
-          {user.role !== 'government' && (
+          {user.role === 'government' ? (
             <div style={styles.statCard}>
-              <span style={styles.statIcon}>❌</span>
-              <span style={styles.statVal}>{rejectedCount}</span>
-              <span style={styles.statLabel}>بلاغات مرفوضة</span>
+              <span style={styles.statIcon}>📋</span>
+              <span style={styles.statVal}>{activeAlerts.length}</span>
+              <span style={styles.statLabel}>إجمالي البلاغات</span>
             </div>
+          ) : (
+            <>
+              <div style={styles.statCard}>
+                <span style={styles.statIcon}>🚨</span>
+                <span style={styles.statVal}>{pendingCount}</span>
+                <span style={styles.statLabel}>بلاغات معلقة</span>
+              </div>
+              <div style={styles.statCard}>
+                <span style={styles.statIcon}>✅</span>
+                <span style={styles.statVal}>{acceptedCount}</span>
+                <span style={styles.statLabel}>بلاغات مقبولة</span>
+              </div>
+              <div style={styles.statCard}>
+                <span style={styles.statIcon}>❌</span>
+                <span style={styles.statVal}>{rejectedCount}</span>
+                <span style={styles.statLabel}>بلاغات مرفوضة</span>
+              </div>
+            </>
           )}
         </div>
 
         {/* التبويبات الثلاثة */}
-        <div style={styles.tabsContainer}>
-          <button 
-            style={{
-              ...styles.tabBtn,
-              ...(selectedTab === 'pending' ? styles.tabBtnActivePending : {})
-            }}
-            onClick={() => setSelectedTab('pending')}
-          >
-            <span>🚨 معلقة</span>
-            <span style={{
-              ...styles.tabBadge,
-              ...(selectedTab === 'pending' ? styles.tabBadgeActivePending : {})
-            }}>{pendingCount}</span>
-          </button>
-          
-          <button 
-            style={{
-              ...styles.tabBtn,
-              ...(selectedTab === 'accepted' ? styles.tabBtnActiveAccepted : {})
-            }}
-            onClick={() => setSelectedTab('accepted')}
-          >
-            <span>🚑 مقبولة</span>
-            <span style={{
-              ...styles.tabBadge,
-              ...(selectedTab === 'accepted' ? styles.tabBadgeActiveAccepted : {})
-            }}>{acceptedCount}</span>
-          </button>
-          
-          {user.role !== 'government' && (
+        {user.role !== 'government' && (
+          <div style={styles.tabsContainer}>
+            <button 
+              style={{
+                ...styles.tabBtn,
+                ...(selectedTab === 'pending' ? styles.tabBtnActivePending : {})
+              }}
+              onClick={() => setSelectedTab('pending')}
+            >
+              <span>🚨 معلقة</span>
+              <span style={{
+                ...styles.tabBadge,
+                ...(selectedTab === 'pending' ? styles.tabBadgeActivePending : {})
+              }}>{pendingCount}</span>
+            </button>
+            
+            <button 
+              style={{
+                ...styles.tabBtn,
+                ...(selectedTab === 'accepted' ? styles.tabBtnActiveAccepted : {})
+              }}
+              onClick={() => setSelectedTab('accepted')}
+            >
+              <span>🚑 مقبولة</span>
+              <span style={{
+                ...styles.tabBadge,
+                ...(selectedTab === 'accepted' ? styles.tabBadgeActiveAccepted : {})
+              }}>{acceptedCount}</span>
+            </button>
+            
             <button 
               style={{
                 ...styles.tabBtn,
@@ -396,43 +690,56 @@ export default function Dashboard() {
                 ...(selectedTab === 'rejected' ? styles.tabBadgeActiveRejected : {})
               }}>{rejectedCount}</span>
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         <p style={styles.sectionTitle}>
-          {selectedTab === 'pending' ? '⚠️ البلاغات المعلقة الواردة:' : selectedTab === 'accepted' ? '🚑 البلاغات المقبولة وجاري الاستجابة لها:' : (user.role === 'volunteer' ? '❌ البلاغات المرفوضة من قبلك:' : '❌ البلاغات المرفوضة من المتطوعين:')}
+          {user.role === 'government' ? '📋 جميع البلاغات الواردة في النظام:' : selectedTab === 'pending' ? '⚠️ البلاغات المعلقة الواردة:' : selectedTab === 'accepted' ? '🚑 البلاغات المقبولة وجاري الاستجابة لها:' : (user.role === 'volunteer' ? '❌ البلاغات المرفوضة من قبلك:' : '❌ البلاغات المرفوضة من المتطوعين:')}
         </p>
         <div style={styles.alertsList}>
           {filteredAlerts.length === 0 ? (
             <div style={styles.noAlertsText}>لا توجد بلاغات في هذا القسم حالياً.</div>
           ) : (
             filteredAlerts.map(alert => (
-              <div key={alert.id} style={{
-                ...styles.alertCard,
-                border: (user.role === 'government' ? alert.gov_responder_username === user.username : alert.volunteer_username === user.username)
-                  ? (user.role === 'government' ? '1.5px solid rgba(59, 130, 246, 0.5)' : '1.5px solid rgba(16, 185, 129, 0.5)')
-                  : '1.5px solid #2d2d37'
-              }}>
+              <div 
+                key={alert.id} 
+                onClick={() => setSearchParams({ incidentId: alert.id })}
+                style={{
+                  ...styles.alertCard,
+                  cursor: 'pointer',
+                  border: (user.role === 'government' ? alert.status !== 'resolved' : alert.volunteer_username === user.username)
+                    ? (user.role === 'government' ? '1.5px solid rgba(59, 130, 246, 0.5)' : '1.5px solid rgba(16, 185, 129, 0.5)')
+                    : '1.5px solid #2d2d37'
+                }}
+              >
                 <div style={styles.alertHeader}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={styles.alertType}>{alert.injury_type || 'طلب استغاثة طارئ'}</span>
                     <span style={{
                       fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '6px',
-                      background: selectedTab === 'rejected'
-                        ? 'rgba(249, 115, 22, 0.15)'
-                        : (alert.status === 'pending' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)'),
-                      color: selectedTab === 'rejected'
-                        ? '#f97316'
-                        : (alert.status === 'pending' ? '#EF4444' : '#10B981'),
+                      background: user.role === 'government'
+                        ? 'rgba(59, 130, 246, 0.15)'
+                        : selectedTab === 'rejected'
+                          ? 'rgba(249, 115, 22, 0.15)'
+                          : (alert.status === 'pending' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)'),
+                      color: user.role === 'government'
+                        ? '#3b82f6'
+                        : selectedTab === 'rejected'
+                          ? '#f97316'
+                          : (alert.status === 'pending' ? '#EF4444' : '#10B981'),
                       border: `1px solid ${
-                        selectedTab === 'rejected'
-                          ? 'rgba(249, 115, 22, 0.3)'
-                          : (alert.status === 'pending' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)')
+                        user.role === 'government'
+                          ? 'rgba(59, 130, 246, 0.3)'
+                          : selectedTab === 'rejected'
+                            ? 'rgba(249, 115, 22, 0.3)'
+                            : (alert.status === 'pending' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)')
                       }`
                     }}>
-                      {selectedTab === 'rejected'
-                        ? 'رفضتها ❌'
-                        : (alert.status === 'pending' ? 'معلقة 🚨' : (alert.status === 'resolved' ? 'محلولة ✓' : 'مقبولة ✓'))
+                      {user.role === 'government'
+                        ? 'بلاغ طارئ 🚨'
+                        : selectedTab === 'rejected'
+                          ? 'رفضتها ❌'
+                          : (alert.status === 'pending' ? 'معلقة 🚨' : (alert.status === 'resolved' ? 'محلولة ✓' : 'مقبولة ✓'))
                       }
                     </span>
                   </div>
@@ -450,6 +757,7 @@ export default function Dashboard() {
                       target="_blank"
                       rel="noopener noreferrer"
                       style={styles.mapLink}
+                      onClick={e => e.stopPropagation()}
                     >
                       🗺️ فتح الموقع الجغرافي على خرائط Google
                     </a>
@@ -463,7 +771,7 @@ export default function Dashboard() {
                   </div>
                   {alert.reporter_phone && (
                     <div style={styles.detailRow}>
-                      <strong>رقم الهاتف:</strong> <a href={`tel:${alert.reporter_phone}`} style={{ color: '#3b82f6', textDecoration: 'none' }}>{alert.reporter_phone}</a>
+                      <strong>رقم الهاتف:</strong> <a href={`tel:${alert.reporter_phone}`} onClick={e => e.stopPropagation()} style={{ color: '#3b82f6', textDecoration: 'none' }}>{alert.reporter_phone}</a>
                     </div>
                   )}
                   {alert.reporter_blood_type && (
@@ -485,7 +793,7 @@ export default function Dashboard() {
 
                 {/* Voice Note */}
                 {alert.voice_note && (
-                  <div style={styles.mediaContainer}>
+                  <div style={styles.mediaContainer} onClick={e => e.stopPropagation()}>
                     <div style={styles.mediaLabel}>🎙️ تسجيل صوتي من موقع الحادث:</div>
                     <audio src={resolveMediaUrl(alert.voice_note)} controls style={{ width: '100%', marginTop: '6px' }} />
                   </div>
@@ -499,7 +807,7 @@ export default function Dashboard() {
                       src={resolveMediaUrl(alert.image)} 
                       alt="الحادث" 
                       style={styles.incidentImage} 
-                      onClick={() => window.open(resolveMediaUrl(alert.image), '_blank')}
+                      onClick={(e) => { e.stopPropagation(); window.open(resolveMediaUrl(alert.image), '_blank'); }}
                     />
                   </div>
                 )}
@@ -512,13 +820,13 @@ export default function Dashboard() {
                     <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
                       <button 
                         style={styles.acceptBtn}
-                        onClick={() => acceptAlert(alert.id)}
+                        onClick={(e) => { e.stopPropagation(); acceptAlert(alert.id); }}
                       >
                         🚀 قبول الاستغاثة والاستجابة
                       </button>
                       <button 
                         style={styles.declineBtn}
-                        onClick={() => declineAlert(alert.id)}
+                        onClick={(e) => { e.stopPropagation(); declineAlert(alert.id); }}
                       >
                         ❌ رفض وتوجيه لغيري
                       </button>
@@ -532,7 +840,7 @@ export default function Dashboard() {
                       </div>
                       <button 
                         style={styles.declineBtn}
-                        onClick={() => declineAlert(alert.id)}
+                        onClick={(e) => { e.stopPropagation(); declineAlert(alert.id); }}
                       >
                         ❌ إلغاء الاستجابة والرفض (توجيه لغيري)
                       </button>
@@ -541,24 +849,13 @@ export default function Dashboard() {
 
                   {user.role === 'government' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
-                      {/* 1. If not accepted by government yet and not resolved: Show Accept button */}
-                      {alert.status !== 'resolved' && alert.gov_responder_username !== user.username && (
-                        <button 
-                          style={styles.acceptBtn}
-                          onClick={() => acceptAlert(alert.id)}
-                        >
-                          🚀 قبول الاستغاثة والاستجابة (إلزامي للجهة الحكومية) 🏛️
-                        </button>
-                      )}
-
-                      {/* 2. If accepted by government: Show success badge */}
-                      {alert.gov_responder_username === user.username && (
+                      {alert.status !== 'resolved' && (
                         <div style={styles.acceptedBadgeGov}>
-                          🟢 تم قبول الاستغاثة وجاري المتابعة والاستجابة من طرفكم 🏛️
+                          🟢 البلاغ مسجل في النظام وجاري المتابعة من طرفكم 🏛️
                         </div>
                       )}
 
-                      {/* 3. Show details about volunteer status */}
+                      {/* Show details about volunteer status */}
                       {alert.volunteer_username ? (
                         <div style={styles.assignedBadge}>
                           👥 المسعف المتطوع المستجيب للحالة: {alert.volunteer_username}
@@ -566,12 +863,12 @@ export default function Dashboard() {
                       ) : (
                         <div style={styles.govBadge}>
                           {alert.status === 'pending'
-                            ? '🏛️ حالة البلاغ في النظام: 🚨 معلق (بانتظار قبولكم وقبول المتطوعين)'
+                            ? '🚨 حالة البلاغ: بانتظار استجابة المسعفين المتطوعين'
                             : '🚨 لم يستجب أي مسعف متطوع لهذه الحالة بعد.'}
                         </div>
                       )}
 
-                      {/* 4. Show resolved status */}
+                      {/* Show resolved status */}
                       {alert.status === 'resolved' && (
                         <div style={styles.resolvedBadge}>
                           ✓ تم حل هذه الحالة وإغلاقها
@@ -593,30 +890,32 @@ export default function Dashboard() {
                 </div>
 
                 {/* Deletion Section (Images, Audios and Requests Deletion) */}
-                <div style={styles.deleteSection}>
-                  {alert.image && (
+                {user.role === 'government' && (
+                  <div style={styles.deleteSection}>
+                    {alert.image && (
+                      <button 
+                        style={styles.deleteImageBtn}
+                        onClick={(e) => { e.stopPropagation(); deleteImage(alert.id); }}
+                      >
+                        🖼️ حذف الصورة فقط
+                      </button>
+                    )}
+                    {alert.voice_note && (
+                      <button 
+                        style={styles.deleteVoiceBtn}
+                        onClick={(e) => { e.stopPropagation(); deleteVoiceNote(alert.id); }}
+                      >
+                        🔇 حذف الصوتية فقط
+                      </button>
+                    )}
                     <button 
-                      style={styles.deleteImageBtn}
-                      onClick={() => deleteImage(alert.id)}
+                      style={styles.deleteIncidentBtn}
+                      onClick={(e) => { e.stopPropagation(); deleteIncident(alert.id); }}
                     >
-                      🖼️ حذف الصورة فقط
+                      🗑️ حذف البلاغ بالكامل
                     </button>
-                  )}
-                  {alert.voice_note && (
-                    <button 
-                      style={styles.deleteVoiceBtn}
-                      onClick={() => deleteVoiceNote(alert.id)}
-                    >
-                      🔇 حذف الصوتية فقط
-                    </button>
-                  )}
-                  <button 
-                    style={styles.deleteIncidentBtn}
-                    onClick={() => deleteIncident(alert.id)}
-                  >
-                    🗑️ حذف البلاغ بالكامل
-                  </button>
-                </div>
+                  </div>
+                )}
               </div>
             ))
           )}

@@ -23,4 +23,5 @@ urlpatterns = [
     path('alerts/<int:alert_id>/delete/', views.delete_incident, name='delete_incident'),
     path('alerts/<int:alert_id>/delete-voice/', views.delete_voice_note, name='delete_voice_note'),
     path('alerts/<int:alert_id>/delete-image/', views.delete_image, name='delete_image'),
+    path('push/fcm-token/', views.register_fcm_token, name='register_fcm_token'),
 ]

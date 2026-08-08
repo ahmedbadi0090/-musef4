@@ -6,6 +6,7 @@ export default function BottomNav({ active }) {
   const navigate = useNavigate()
   const [showDrawer, setShowDrawer] = useState(false)
   const [user, setUser] = useState(null)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   useEffect(() => {
     if (showDrawer && !user) {
@@ -20,6 +21,10 @@ export default function BottomNav({ active }) {
   }, [showDrawer, user])
 
   const handleLogout = () => {
+    setShowLogoutConfirm(true)
+  }
+
+  const confirmLogout = () => {
     localStorage.clear()
     sessionStorage.clear()
     navigate('/login')
@@ -36,6 +41,76 @@ export default function BottomNav({ active }) {
 
   return (
     <>
+      {showLogoutConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(10, 10, 12, 0.8)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#16161a',
+            border: '1.5px solid #2d2d37',
+            borderRadius: '24px',
+            padding: '32px 24px',
+            maxWidth: '420px',
+            width: '100%',
+            boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+            textAlign: 'center',
+            fontFamily: 'Cairo, sans-serif',
+            direction: 'rtl'
+          }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚪</div>
+            <h3 style={{ color: '#f0f0f5', fontSize: '22px', margin: '0 0 12px 0', fontWeight: 800 }}>تسجيل الخروج</h3>
+            <p style={{ color: '#9090a8', fontSize: '16px', margin: '0 0 28px 0', lineHeight: '1.6' }}>
+              هل أنت متأكد من رغبتك في تسجيل الخروج من التطبيق؟
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={confirmLogout}
+                style={{
+                  flex: 1,
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '14px',
+                  padding: '14px',
+                  fontSize: '16px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 6px 20px rgba(239, 68, 68, 0.3)'
+                }}
+              >
+                نعم، متأكد
+              </button>
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{
+                  flex: 1,
+                  background: '#2d2d37',
+                  color: '#f0f0f5',
+                  border: 'none',
+                  borderRadius: '14px',
+                  padding: '14px',
+                  fontSize: '16px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={styles.nav}>
         {items.map(item => {
           if (item.id === 'sos') {

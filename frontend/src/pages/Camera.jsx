@@ -10,6 +10,7 @@ export default function Camera() {
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
   const [cameraActive, setCameraActive] = useState(false)
+  const [facingMode, setFacingMode] = useState('environment') // 'environment' is back, 'user' is front
   const fileRef = useRef()
   const videoRef = useRef()
   const canvasRef = useRef()
@@ -19,7 +20,7 @@ export default function Camera() {
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' } // كاميرا خلفية
+        video: { facingMode: facingMode }
       })
       streamRef.current = stream
       videoRef.current.srcObject = stream
@@ -29,6 +30,26 @@ export default function Camera() {
       setError('')
     } catch (e) {
       setError('تعذر فتح الكاميرا — تحقق من الإذن')
+    }
+  }
+
+  // تبديل بين الكاميرا الأمامية والخلفية
+  const toggleCameraFacing = async () => {
+    const newFacing = facingMode === 'environment' ? 'user' : 'environment'
+    setFacingMode(newFacing)
+    if (cameraActive) {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop())
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: newFacing }
+        })
+        streamRef.current = stream
+        videoRef.current.srcObject = stream
+      } catch (e) {
+        setError('تعذر تبديل الكاميرا')
+      }
     }
   }
 
@@ -104,7 +125,38 @@ export default function Camera() {
       <div style={styles.content}>
 
         {/* Camera / Preview Box */}
-        <div style={styles.cameraBox}>
+        <div style={{ ...styles.cameraBox, position: 'relative' }}>
+          {/* زر تبديل الكاميرا */}
+          {cameraActive && (
+            <button
+              onClick={toggleCameraFacing}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                left: '16px',
+                background: 'rgba(30, 30, 36, 0.8)',
+                backdropFilter: 'blur(4px)',
+                border: '1.5px solid rgba(255,255,255,0.15)',
+                borderRadius: '50%',
+                width: '44px',
+                height: '44px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10,
+                color: 'white',
+                fontSize: '20px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                transition: 'background 0.2s',
+              }}
+              title="تبديل الكاميرا"
+              type="button"
+            >
+              🔄
+            </button>
+          )}
+
           {/* فيديو مباشر */}
           <video
             ref={videoRef}
@@ -113,7 +165,8 @@ export default function Camera() {
             style={{
               display: cameraActive ? 'block' : 'none',
               width: '100%', height: '100%',
-              objectFit: 'cover', borderRadius: '14px'
+              objectFit: 'cover', borderRadius: '14px',
+              transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' // عكس الكاميرا الأمامية
             }}
           />
 
