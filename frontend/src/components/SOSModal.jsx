@@ -11,6 +11,7 @@ export default function SOSModal({ isOpen, onClose, onSend }) {
   const [isLoading, setIsLoading] = useState(false);
   
   const mediaRecorderRef = useRef(null);
+  const streamRef = useRef(null);
   const audioChunksRef = useRef([]);
   const timerRef = useRef(null);
 
@@ -56,6 +57,7 @@ export default function SOSModal({ isOpen, onClose, onSend }) {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -70,7 +72,10 @@ export default function SOSModal({ isOpen, onClose, onSend }) {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
         setAudioBlob(audioBlob);
         setAudioUrl(URL.createObjectURL(audioBlob));
-        stream.getTracks().forEach(track => track.stop());
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
       };
       
       mediaRecorder.start();
@@ -87,11 +92,69 @@ export default function SOSModal({ isOpen, onClose, onSend }) {
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {
+        console.error(e);
+      }
       setIsRecording(false);
-      clearInterval(timerRef.current);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
     }
   };
+
+  // Cleanup on unmount or when modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (e) {
+          console.error("Error stopping media recorder on close:", e);
+        }
+      }
+      if (streamRef.current) {
+        try {
+          streamRef.current.getTracks().forEach(track => track.stop());
+        } catch (e) {
+          console.error("Error stopping stream tracks on close:", e);
+        }
+        streamRef.current = null;
+      }
+      setIsRecording(false);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      // Reset forms and voice note state on close
+      setNote('');
+      setImage(null);
+      setImagePreview(null);
+      setAudioBlob(null);
+      setAudioUrl(null);
+      setRecordTime(0);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    return () => {
+      // Component unmount cleanup
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (e) {}
+      }
+      if (streamRef.current) {
+        try {
+          streamRef.current.getTracks().forEach(track => track.stop());
+        } catch (e) {}
+        streamRef.current = null;
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];

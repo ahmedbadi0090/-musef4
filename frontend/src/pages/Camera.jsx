@@ -4,6 +4,15 @@ import API from '../api'
 
 export default function Camera() {
   const navigate = useNavigate()
+
+  const cleanAnalysis = (text) => {
+    if (!text) return '';
+    return text
+      .replace(/<think>[\s\S]*?<\/think>/g, '')
+      .replace(/<\/?think>/gi, '')
+      .trim();
+  };
+
   const [image, setImage] = useState(null)
   const [preview, setPreview] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -270,7 +279,7 @@ export default function Camera() {
               </p>
               <div style={styles.reportBox}>
                 <p style={{ color: '#e5e7eb', fontSize: '14px', lineHeight: '1.8', whiteSpace: 'pre-line', margin: 0 }}>
-                  {result.gemini_analysis}
+                  {cleanAnalysis(result.gemini_analysis)}
                 </p>
               </div>
             </div>

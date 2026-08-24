@@ -216,13 +216,14 @@ def analyze_injury(request):
                     {
                         "type": "text",
                         "text": f"""أنت مساعد طبي طارئ متخصص. كشف النظام: {', '.join(injury_types)}
-إذا كان الكشف "لا توجد إصابة واضحة في الصورة"، قل للمستخدم بوضوح أن الصورة لا تظهر إصابة وانصحه بإرسال صورة أوضح.
-أما إذا كانت هناك إصابة حقيقية، أعطني:
+إذا كان الكشف "لا توجد إصابة واضحة في الصورة"، قل للمستخدم بوضوح باللغة العربية الفصحى أن الصورة لا تظهر إصابة وانصحه بإرسال صورة أوضح.
+أما إذا كانت هناك إصابة حقيقية، أعطني باللغة العربية الفصحى وبشكل منظم ومختصر:
 1. نوع الإصابة المرئية
 2. درجة خطورتها (خفيفة/متوسطة/خطيرة)
 3. خطوات الإسعاف الأولي (3-5 خطوات)
 4. هل تحتاج إسعاف فوري؟
-أجب باللغة العربية بشكل مختصر وواضح.""" },
+
+ملاحظة هامة جداً: يجب أن تكون الإجابة كاملة باللغة العربية الفصحى فقط. يمنع منعاً باتاً استخدام اللغة الإنجليزية أو كتابة أي عمليات تفكير (Thinking/think) داخل الرد.""" },
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}
@@ -232,9 +233,16 @@ def analyze_injury(request):
             max_tokens=1000
         )
 
+        raw_analysis = response.choices[0].message.content
+        import re
+        # Remove any XML-like reasoning block (e.g. <think>...</think>)
+        clean_analysis = re.sub(r'<think>.*?</think>', '', raw_analysis, flags=re.DOTALL).strip()
+        # Remove any lingering think tags
+        clean_analysis = re.sub(r'</?think>', '', clean_analysis, flags=re.IGNORECASE).strip()
+
         return Response({
             "yolo_detections": detections,
-            "gemini_analysis": response.choices[0].message.content,
+            "gemini_analysis": clean_analysis,
             "status": "تم التحليل بنجاح"
         })
 
@@ -489,8 +497,13 @@ def medical_chat(request):
             max_tokens=800,
             temperature=0.3
         )
-        content = response.choices[0].message.content
-        return Response({"answer": content})
+        raw_content = response.choices[0].message.content
+        import re
+        # Remove any XML-like reasoning block (e.g. <think>...</think>)
+        clean_content = re.sub(r'<think>.*?</think>', '', raw_content, flags=re.DOTALL).strip()
+        # Remove any lingering think tags
+        clean_content = re.sub(r'</?think>', '', clean_content, flags=re.IGNORECASE).strip()
+        return Response({"answer": clean_content})
     except Exception as e:
         return Response({"error": f"فشل الاتصال بمساعد الذكاء الاصطناعي: {str(e)}"}, status=500)
 

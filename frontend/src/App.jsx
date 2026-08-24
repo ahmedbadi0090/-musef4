@@ -176,9 +176,12 @@ export default function App() {
       await PushNotifications.register();
       
       PushNotifications.addListener('registration', (token) => {
+        window.latestFCMToken = token.value;
         const jwt = localStorage.getItem('token');
         if (jwt) {
-          API.post('/api/push/fcm-token/', { token: token.value }).catch(console.error);
+          API.post('/api/push/fcm-token/', { token: token.value })
+            .then(() => console.log('Successfully registered FCM token'))
+            .catch(console.error);
         }
       });
       
@@ -224,9 +227,20 @@ export default function App() {
     // ── Custom window events ─────────────────────────────────────────────────
     const onPlayAlarm = () => playAlarm(null);
     const onStopAlarm = () => stopAlarm();
+    const handleFCMRegister = () => {
+      const jwt = localStorage.getItem('token');
+      if (jwt && window.latestFCMToken) {
+        API.post('/api/push/fcm-token/', { token: window.latestFCMToken })
+          .then(() => console.log('Successfully registered FCM token after login'))
+          .catch(console.error);
+      } else if (Capacitor.isNativePlatform()) {
+        setupNativePush();
+      }
+    };
 
     window.addEventListener('play-emergency-alarm', onPlayAlarm);
     window.addEventListener('stop-emergency-alarm', onStopAlarm);
+    window.addEventListener('fcm-register', handleFCMRegister);
 
     // ── Polling every 10 seconds (throttled inside) ──────────────────────────
     checkGlobalAlerts();
@@ -247,6 +261,7 @@ export default function App() {
       window.removeEventListener('play-emergency-alarm', onPlayAlarm);
       window.removeEventListener('stop-emergency-alarm', onStopAlarm);
       window.removeEventListener('refetch-alerts', onRefetch);
+      window.removeEventListener('fcm-register', handleFCMRegister);
       clearInterval(intervalId);
       _haltAlarm();
     };
@@ -256,10 +271,15 @@ export default function App() {
     <BrowserRouter>
       {alarmActive && (_getTabRole() === 'volunteer' || _getTabRole() === 'government') && (
         <div style={globalStyles.alarmBanner}>
-          <span style={{ fontSize: '14px', fontWeight: 800, color: '#ef4444' }}>🚨 نداء استغاثة نشط وارد الآن!</span>
-          <button style={globalStyles.stopAlarmBtn} onClick={stopAlarm}>
-            🔕 إيقاف التنبيه
-          </button>
+          <span style={{ fontSize: '14px', fontWeight: 800, color: '#ffffff' }}>🚨 نداء استغاثة نشط وارد الآن!</span>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button style={globalStyles.dashboardBtn} onClick={() => { stopAlarm(); window.location.href = '/dashboard'; }}>
+              📊 لوحة التحكم
+            </button>
+            <button style={globalStyles.stopAlarmBtn} onClick={stopAlarm}>
+              🔕 إيقاف التنبيه
+            </button>
+          </div>
         </div>
       )}
       <Routes>
@@ -303,6 +323,16 @@ const globalStyles = {
     background: 'rgba(255,255,255,0.2)',
     color: 'white',
     border: '1.5px solid rgba(255,255,255,0.4)',
+    borderRadius: '10px',
+    padding: '8px 16px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: 'Cairo',
+  },
+  dashboardBtn: {
+    background: '#ffffff',
+    color: '#ef4444',
+    border: 'none',
     borderRadius: '10px',
     padding: '8px 16px',
     fontWeight: 700,

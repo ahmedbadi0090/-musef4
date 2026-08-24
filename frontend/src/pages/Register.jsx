@@ -44,6 +44,10 @@ export default function Register() {
           })
           localStorage.setItem('token', res.data.access)
           localStorage.setItem('refresh', res.data.refresh)
+          
+          // Dispatch event to register FCM token
+          window.dispatchEvent(new CustomEvent('fcm-register'));
+
           navigate('/')
         } catch (err) {
           navigate('/login')

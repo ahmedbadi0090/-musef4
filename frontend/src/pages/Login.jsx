@@ -40,6 +40,9 @@ export default function Login() {
       sessionStorage.setItem('role', role)
       sessionStorage.setItem('username', username)
 
+      // Dispatch event to register FCM token
+      window.dispatchEvent(new CustomEvent('fcm-register'));
+
       if (role === 'volunteer' || role === 'government') {
         navigate('/dashboard')
       } else {
