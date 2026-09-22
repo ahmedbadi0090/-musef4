@@ -32,8 +32,8 @@ export default function Login() {
       localStorage.setItem('token', accessToken)
       if (refreshToken) localStorage.setItem('refresh', refreshToken)
 
-      const role = res.data.user?.role || 'user'
-      const username = res.data.user?.username || form.username
+      const role = res.data.role || res.data.user?.role || 'user'
+      const username = res.data.username || res.data.user?.username || form.username
 
       localStorage.setItem('role', role)
       localStorage.setItem('username', username)

@@ -11,10 +11,14 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from .serializers import RegisterSerializer, UserSerializer, IncidentSerializer
+from rest_framework_simplejwt.views import TokenObtainPairView
+from .serializers import RegisterSerializer, UserSerializer, IncidentSerializer, CustomTokenObtainPairSerializer
 from .models import User, Incident, PushSubscription, FCMDevice, Roles, UserEmails, Location, Incidents, AIDiagnosis, IncidentAudio
 import firebase_admin
 from firebase_admin import messaging
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
 
 def get_user_role(user):
     if not user or not user.is_authenticated:
@@ -168,7 +172,10 @@ def analyze_injury(request):
             tmp_path = tmp.name
 
         from ultralytics import YOLO
-        model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "yolov8_injury_cls.pt")
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        best_path = os.path.join(base_dir, "best.pt")
+        cls_path = os.path.join(base_dir, "yolov8_injury_cls.pt")
+        model_path = best_path if os.path.exists(best_path) else cls_path
         
         detections = []
         if os.path.exists(model_path):
@@ -179,16 +186,28 @@ def analyze_injury(request):
                 if probs is not None:
                     top1_idx = probs.top1
                     top1_conf = float(probs.top1conf)
+                    top1_label = results[0].names[top1_idx]
                     
-                    if top1_conf >= 0.50:
-                        top1_label = results[0].names[top1_idx]
-                        class_mapping = {
-                            "burns": "حروق",
-                            "wounds": "جروح",
-                            "snakebites": "لدغات ثعابين",
-                            "normal": "لا توجد إصابة واضحة"
-                        }
-                        arabic_label = class_mapping.get(top1_label, top1_label)
+                    class_mapping = {
+                        "Abrasions": "سحجات وخدوش",
+                        "Blister": "بثور فقاعية",
+                        "Bruise": "كدمات وورم",
+                        "Burn": "حروق",
+                        "burns": "حروق",
+                        "Cut": "جروح قطعية",
+                        "wounds": "جروح",
+                        "snakebites": "لدغات ثعابين",
+                        "no abnormality": "لا توجد إصابة واضحة",
+                        "normal": "لا توجد إصابة واضحة"
+                    }
+                    arabic_label = class_mapping.get(top1_label, top1_label)
+                    
+                    if top1_label.lower() in ("no abnormality", "normal") or top1_conf < 0.50:
+                        detections.append({
+                            'class': "لا توجد إصابة واضحة",
+                            'confidence': round(top1_conf, 2)
+                        })
+                    else:
                         detections.append({
                             'class': arabic_label,
                             'confidence': round(top1_conf, 2)
@@ -203,7 +222,7 @@ def analyze_injury(request):
         groq_key = os.getenv("GROQ_API_KEY", "")
         client = Groq(api_key=groq_key)
 
-        # Check if there is any real injury detected
+        # Check if there is any real injury detected by YOLO
         has_injury = False
         if detections:
             for d in detections:
@@ -216,37 +235,69 @@ def analyze_injury(request):
         else:
             injury_types = [d['class'] for d in detections if d['class'] != "لا توجد إصابة واضحة"]
 
-        response = client.chat.completions.create(
-            model="qwen/qwen3.6-27b",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": f"""أنت مساعد طبي طارئ متخصص. كشف النظام: {', '.join(injury_types)}
-إذا كان الكشف "لا توجد إصابة واضحة في الصورة"، قل للمستخدم بوضوح باللغة العربية الفصحى أن الصورة لا تظهر إصابة وانصحه بإرسال صورة أوضح.
-أما إذا كانت هناك إصابة حقيقية، أعطني باللغة العربية الفصحى وبشكل منظم ومختصر:
+        model_candidates = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b"]
+        raw_analysis = None
+
+        prompt_text = f"""أنت مساعد طبي طارئ متخصص. كشف النظام: {', '.join(injury_types)}
+إذا كان الكشف "لا توجد إصابة واضحة في الصورة" أو الصورة تظهر شخصاً أو وجهاً أو بيئة بدون إصابات جلدية طارئة، قل للمستخدم بوضوح باللغة العربية الفصحى أن الصورة لا تظهر أي إصابة أو جرح واضح على البشرة وانصحه بإرسال صورة أعد وأوضح لمكان الإصابة إن وجدت.
+أما إذا كانت هناك إصابة حقيقية واضحة، أعطني باللغة العربية الفصحى وبشكل منظم ومختصر:
 1. نوع الإصابة المرئية
 2. درجة خطورتها (خفيفة/متوسطة/خطيرة)
 3. خطوات الإسعاف الأولي (3-5 خطوات)
 4. هل تحتاج إسعاف فوري؟
 
-ملاحظة هامة جداً: يجب أن تكون الإجابة كاملة باللغة العربية الفصحى فقط. يمنع منعاً باتاً استخدام اللغة الإنجليزية أو كتابة أي عمليات تفكير (Thinking/think) داخل الرد.""" },
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}
-                    }
-                ]
-            }],
-            max_tokens=1000
-        )
+ملاحظة هامة جداً: يجب أن تكون الإجابة كاملة باللغة العربية الفصحى فقط. يمنع منعاً باتاً استخدام اللغة الإنجليزية أو كتابة أي عمليات تفكير (Thinking/think) داخل الرد."""
 
-        raw_analysis = response.choices[0].message.content
-        import re
-        # Remove any XML-like reasoning block (e.g. <think>...</think>)
-        clean_analysis = re.sub(r'<think>.*?</think>', '', raw_analysis, flags=re.DOTALL).strip()
-        # Remove any lingering think tags
-        clean_analysis = re.sub(r'</?think>', '', clean_analysis, flags=re.IGNORECASE).strip()
+        for m_name in model_candidates:
+            try:
+                response = client.chat.completions.create(
+                    model=m_name,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt_text},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}}
+                        ]
+                    }],
+                    max_tokens=1000
+                )
+                raw_analysis = response.choices[0].message.content
+                if raw_analysis:
+                    break
+            except Exception:
+                try:
+                    response = client.chat.completions.create(
+                        model=m_name,
+                        messages=[{
+                            "role": "user",
+                            "content": prompt_text
+                        }],
+                        max_tokens=1000
+                    )
+                    raw_analysis = response.choices[0].message.content
+                    if raw_analysis:
+                        break
+                except Exception:
+                    pass
+
+        if not raw_analysis:
+            if not has_injury:
+                clean_analysis = "لم يتبين وجود إصابة واضحة في الصورة المحملة. يُرجى التقاط صورة أوضح لمكان الإصابة للمساعدة في التشخيص."
+            else:
+                clean_analysis = f"بناءً على الفحص البصري الأول، تم رصد: {', '.join(injury_types)}.\n1. درجة الخطورة: يلزم تقييم كادر طبي فوري.\n2. خطوات الإسعاف الأولي:\n- الحفاظ على هدوء المصاب وتطهير الجرح إذا أمكن بشاش معقم.\n- عدم وضع أي مواد غريبة أو مراهم غير معقمة.\n- الاتصال بالطوارئ أو الاستعانة بمطوع قريب فوراً."
+        else:
+            import re
+            clean_analysis = re.sub(r'<think>.*?</think>', '', raw_analysis, flags=re.DOTALL).strip()
+            clean_analysis = re.sub(r'</?think>', '', clean_analysis, flags=re.IGNORECASE).strip()
+
+        # Cross-verification: If LLM Vision confirms image shows no injury, align YOLO detections to normal state
+        if clean_analysis:
+            no_injury_phrases = ["لا تظهر أي إصابة", "لا توجد إصابة", "لا تظهر أي جرح", "صورة سليمة", "لا تظهر إي إصابة"]
+            if any(p in clean_analysis for p in no_injury_phrases):
+                detections = [{
+                    'class': "لا توجد إصابة واضحة",
+                    'confidence': 0.95
+                }]
 
         return Response({
             "yolo_detections": detections,

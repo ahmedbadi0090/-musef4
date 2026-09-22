@@ -297,12 +297,13 @@ export default function SOSModal({ isOpen, onClose, onSend }) {
                   <input
                     type="file"
                     accept="image/*"
+                    capture="environment"
                     onChange={handleImageChange}
                     style={{ display: 'none' }}
                     disabled={isLoading}
                   />
                   <span style={styles.cameraIcon}>📸</span>
-                  <span>التقط صورة أو اختر من المعرض</span>
+                  <span>التقط صورة بالكاميرا</span>
                 </label>
               ) : (
                 <div style={styles.previewContainer}>

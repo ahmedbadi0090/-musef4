@@ -3,8 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import API from '../api'
 import BottomNav from '../components/BottomNav'
 
-const BASE_URL = 'http://127.0.0.1:8000';
-
+const BASE_URL = API.BASE_URL;
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding)

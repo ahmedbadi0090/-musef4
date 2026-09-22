@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Capacitor } from '@capacitor/core';
 
-const LOCAL_IP = ' 192.168.1.7'; // ⚠️ IP جهازك الحالي — حدّثه كل ما تتغير الشبكة
+const LOCAL_IP = '192.168.1.7'; // ⚠️ IP جهازك الحالي — حدّثه كل ما تتغير الشبكة
 
 function getBaseUrl() {
   const platform = Capacitor.getPlatform();

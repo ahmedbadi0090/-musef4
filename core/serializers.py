@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Roles, User, UserEmails, Location, Incidents, AIDiagnosis, IncidentAudio
 
 class RolesSerializer(serializers.ModelSerializer):
@@ -11,11 +12,11 @@ class RegisterSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
     phone = serializers.CharField(required=True)
     full_name = serializers.CharField(required=False, allow_blank=True)
-    role_str = serializers.CharField(source='role', required=False, write_only=True)
+    role = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     
     class Meta:
         model = User
-        fields = ['username', 'email', 'password', 'phone', 'role', 'role_str', 'region', 'full_name']
+        fields = ['username', 'email', 'password', 'phone', 'role', 'region', 'full_name']
     
     def validate_phone(self, value):
         if not value or value.strip() == "":
@@ -28,14 +29,26 @@ class RegisterSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("هذا البريد مسجل مسبقاً ولا يمكن إدخاله مرة أخرى.")
         return value
 
+    def validate_role(self, value):
+        if not value:
+            return None
+        if isinstance(value, Roles):
+            return value
+        if isinstance(value, str):
+            val_str = value.strip()
+            if val_str.isdigit():
+                role_obj = Roles.objects.filter(pk=int(val_str)).first()
+            else:
+                role_obj = Roles.objects.filter(role_name__iexact=val_str).first()
+            if role_obj:
+                return role_obj
+        return None
+
     def create(self, validated_data):
         email = validated_data.pop('email', None)
-        role_val = validated_data.pop('role', None)
-        role_obj = None
-        if isinstance(role_val, Roles):
-            role_obj = role_val
-        elif isinstance(role_val, str):
-            role_obj = Roles.objects.filter(role_name=role_val).first()
+        role_obj = validated_data.pop('role', None)
+        if not role_obj:
+            role_obj = Roles.objects.filter(role_name='user').first()
             
         user = User.objects.create_user(role=role_obj, **validated_data)
         if email:
@@ -48,6 +61,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     email = serializers.SerializerMethodField()
     phone = serializers.CharField(required=True)
+    role = serializers.SerializerMethodField()
     role_name = serializers.SerializerMethodField()
     role_id = serializers.SerializerMethodField()
 
@@ -62,8 +76,11 @@ class UserSerializer(serializers.ModelSerializer):
         first_email = obj.emails.first()
         return first_email.email if first_email else obj.email
 
+    def get_role(self, obj):
+        return obj.role.role_name if obj.role else 'user'
+
     def get_role_name(self, obj):
-        return obj.role.role_name if obj.role else (getattr(obj, 'role', None) or 'user')
+        return obj.role.role_name if obj.role else 'user'
 
     def get_role_id(self, obj):
         return obj.role.role_id if obj.role else None
@@ -72,6 +89,16 @@ class UserSerializer(serializers.ModelSerializer):
         if not value or value.strip() == "":
             raise serializers.ValidationError("رقم الهاتف إلزامي.")
         return value
+
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        user_serializer = UserSerializer(self.user)
+        data['user'] = user_serializer.data
+        data['role'] = user_serializer.data['role']
+        data['username'] = self.user.username
+        return data
 
 
 class IncidentSerializer(serializers.ModelSerializer):

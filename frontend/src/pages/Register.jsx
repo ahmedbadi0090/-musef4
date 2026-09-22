@@ -42,13 +42,27 @@ export default function Register() {
             username: form.username,
             password: form.password,
           })
-          localStorage.setItem('token', res.data.access)
-          localStorage.setItem('refresh', res.data.refresh)
+          const accessToken = res.data.access || res.data.token
+          const refreshToken = res.data.refresh
+          const role = res.data.role || res.data.user?.role || form.role || 'user'
+          const username = res.data.username || res.data.user?.username || form.username
+
+          localStorage.setItem('access_token', accessToken)
+          localStorage.setItem('token', accessToken)
+          if (refreshToken) localStorage.setItem('refresh', refreshToken)
+          localStorage.setItem('role', role)
+          localStorage.setItem('username', username)
+          sessionStorage.setItem('role', role)
+          sessionStorage.setItem('username', username)
           
           // Dispatch event to register FCM token
           window.dispatchEvent(new CustomEvent('fcm-register'));
 
-          navigate('/')
+          if (role === 'volunteer' || role === 'government') {
+            navigate('/dashboard')
+          } else {
+            navigate('/')
+          }
         } catch (err) {
           navigate('/login')
         }
@@ -65,6 +79,13 @@ export default function Register() {
           setError(Array.isArray(errors.phone) ? errors.phone[0] : errors.phone)
         } else if (errors.password) {
           setError(Array.isArray(errors.password) ? errors.password[0] : errors.password)
+        } else if (errors.role) {
+          setError(Array.isArray(errors.role) ? errors.role[0] : errors.role)
+        } else if (typeof errors === 'object') {
+          const firstKey = Object.keys(errors)[0]
+          const firstVal = errors[firstKey]
+          const msg = Array.isArray(firstVal) ? firstVal[0] : firstVal
+          setError(`${firstKey}: ${msg}`)
         } else {
           setError('حدث خطأ في التسجيل، يرجى التحقق من البيانات.')
         }
