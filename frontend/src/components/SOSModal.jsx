@@ -52,6 +52,8 @@ export default function SOSModal({ isOpen, onClose, onSend }) {
     }
   }, []);
 
+  if (!isOpen) return null;
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -225,8 +227,6 @@ export default function SOSModal({ isOpen, onClose, onSend }) {
       sendData(null, null);
     }
   };
-
-  if (!isOpen) return null;
 
   return (
     <div style={styles.overlay}>

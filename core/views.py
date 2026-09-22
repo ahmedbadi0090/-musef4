@@ -12,17 +12,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from .serializers import RegisterSerializer, UserSerializer, IncidentSerializer
-from .models import User, Incident, PushSubscription, FCMDevice, Roles, UserEmails, Location, Incidents, AIDiagnosis, IncidentAudio
+from .models import User, Incident, PushSubscription, FCMDevice
 import firebase_admin
 from firebase_admin import messaging
-
-def get_user_role(user):
-    if not user or not user.is_authenticated:
-        return 'user'
-    if hasattr(user, 'role') and user.role:
-        return user.role.role_name
-    return 'user'
-
 
 logger = logging.getLogger(__name__)
 
@@ -300,7 +292,7 @@ def haversine(lat1, lon1, lat2, lon2):
 def nearby_volunteers(request):
     lat = float(request.query_params.get('lat', 0))
     lon = float(request.query_params.get('lon', 0))
-    volunteers = User.objects.filter(role__role_name='volunteer', is_available=True)
+    volunteers = User.objects.filter(role='volunteer', is_available=True)
     result = []
     for v in volunteers:
         if v.latitude and v.longitude:
@@ -345,8 +337,6 @@ def update_location(request):
             user.is_available = bool(is_available)
             
     user.save()
-    if user.latitude and user.longitude:
-        Location.objects.create(user=user, latitude=user.latitude, longitude=user.longitude)
     return Response({
         "message": "تم تحديث البيانات بنجاح ✅",
         "latitude": user.latitude,
@@ -382,14 +372,8 @@ def sos_alert(request):
         voice_note=voice_note,
         status='pending'
     )
-    # Save auxiliary audio/diagnosis records
-    if voice_note:
-        IncidentAudio.objects.create(incident=incident, audio_path=incident.voice_note.name)
-    if image:
-        AIDiagnosis.objects.create(incident=incident, injury_type=note, confidence_score=0.95, image_path=incident.image.name)
-
     # Exclude the reporter so they don't get assigned to their own SOS
-    volunteers = User.objects.filter(role__role_name='volunteer', is_available=True).exclude(id=request.user.id)
+    volunteers = User.objects.filter(role='volunteer', is_available=True).exclude(id=request.user.id)
     nearest = None
     min_dist = float('inf')
     for v in volunteers:
@@ -405,7 +389,7 @@ def sos_alert(request):
         
         send_push_notification_async(nearest.id, incident.id)
             
-        gov_users = User.objects.filter(role__role_name='government')
+        gov_users = User.objects.filter(role='government')
         for gov in gov_users:
             send_push_notification_async(gov.id, incident.id)
             
@@ -419,7 +403,7 @@ def sos_alert(request):
             }
         })
     
-    gov_users = User.objects.filter(role__role_name='government')
+    gov_users = User.objects.filter(role='government')
     for gov in gov_users:
         send_push_notification_async(gov.id, incident.id)
 
@@ -528,12 +512,11 @@ def medical_chat(request):
 def volunteer_alerts(request):
     from django.db.models import Q
     user = request.user
-    role_name = get_user_role(user)
-    if role_name == 'volunteer':
+    if user.role == 'volunteer':
         incidents = Incident.objects.filter(
             Q(volunteer=user) | Q(status='pending')
         ).order_by('-created_at')
-    elif role_name == 'government':
+    elif user.role == 'government':
         incidents = Incident.objects.all().order_by('-created_at')
     else:
         incidents = Incident.objects.filter(reporter=user).order_by('-created_at')
@@ -545,7 +528,7 @@ def volunteer_alerts(request):
 def accept_alert(request, alert_id):
     try:
         incident = Incident.objects.get(id=alert_id)
-        if get_user_role(request.user) == 'government':
+        if request.user.role == 'government':
             if incident.gov_responder:
                 return Response({"error": "تم قبول هذه الحالة بالفعل من قبل جهة حكومية أخرى"}, status=400)
             incident.gov_responder = request.user
@@ -568,7 +551,7 @@ def accept_alert(request, alert_id):
 def decline_alert(request, alert_id):
     try:
         incident = Incident.objects.get(id=alert_id)
-        if get_user_role(request.user) == 'government':
+        if request.user.role == 'government':
             return Response({"error": "لا يمكن للجهة الحكومية رفض الاستغاثة"}, status=400)
         
         # Allow decline if: volunteer is assigned to this incident OR incident is pending (not yet assigned)
@@ -587,7 +570,7 @@ def decline_alert(request, alert_id):
         incident.save()
         
         # Find the NEXT nearest volunteer (excluding the ones who declined AND the reporter)
-        volunteers = User.objects.filter(role__role_name='volunteer', is_available=True).exclude(
+        volunteers = User.objects.filter(role='volunteer', is_available=True).exclude(
             id__in=incident.declined_volunteers.all()
         ).exclude(id=incident.reporter.id)
         nearest = None
@@ -637,7 +620,7 @@ def decline_alert(request, alert_id):
 def delete_incident(request, alert_id):
     try:
         incident = Incident.objects.get(id=alert_id)
-        if get_user_role(request.user) == 'government' or incident.reporter == request.user or incident.volunteer == request.user:
+        if request.user.role == 'government' or incident.reporter == request.user or incident.volunteer == request.user:
             # Delete physical files from storage
             if incident.image and os.path.exists(incident.image.path):
                 try:
@@ -662,7 +645,7 @@ def delete_incident(request, alert_id):
 def delete_voice_note(request, alert_id):
     try:
         incident = Incident.objects.get(id=alert_id)
-        if get_user_role(request.user) == 'government' or incident.reporter == request.user or incident.volunteer == request.user:
+        if request.user.role == 'government' or incident.reporter == request.user or incident.volunteer == request.user:
             if incident.voice_note:
                 if os.path.exists(incident.voice_note.path):
                     try:
@@ -682,7 +665,7 @@ def delete_voice_note(request, alert_id):
 def delete_image(request, alert_id):
     try:
         incident = Incident.objects.get(id=alert_id)
-        if get_user_role(request.user) == 'government' or incident.reporter == request.user or incident.volunteer == request.user:
+        if request.user.role == 'government' or incident.reporter == request.user or incident.volunteer == request.user:
             if incident.image:
                 if os.path.exists(incident.image.path):
                     try:
@@ -700,7 +683,7 @@ def delete_image(request, alert_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def gov_dashboard(request):
-    if get_user_role(request.user) != 'government':
+    if request.user.role != 'government':
         return Response({"error": "غير مصرح بالدخول للوحة التحكم هذه"}, status=403)
         
     total_incidents = Incident.objects.count()
@@ -708,8 +691,8 @@ def gov_dashboard(request):
     active = Incident.objects.filter(status='active').count()
     resolved = Incident.objects.filter(status='resolved').count()
     
-    total_volunteers = User.objects.filter(role__role_name='volunteer').count()
-    active_volunteers = User.objects.filter(role__role_name='volunteer', is_available=True).count()
+    total_volunteers = User.objects.filter(role='volunteer').count()
+    active_volunteers = User.objects.filter(role='volunteer', is_available=True).count()
     
     regions_stats = {}
     for r_code, r_name in User.REGION_CHOICES:
