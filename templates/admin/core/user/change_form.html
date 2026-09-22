@@ -24,9 +24,11 @@
     // أنشئ الخريطة
     const map = L.map('map').setView([initLat, initLon], 13);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: 'OpenStreetMap'
-    }).addTo(map);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap contributors © CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19
+}).addTo(map);
 
     // ماركر قابل للسحب
     let marker = L.marker([initLat, initLon], { draggable: true }).addTo(map);

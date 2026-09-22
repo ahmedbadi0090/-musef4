@@ -1,14 +1,21 @@
 from rest_framework import serializers
-from .models import User
+from .models import Roles, User, UserEmails, Location, Incidents, AIDiagnosis, IncidentAudio
+
+class RolesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Roles
+        fields = ['role_id', 'role_name', 'role_label']
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
     phone = serializers.CharField(required=True)
+    full_name = serializers.CharField(required=False, allow_blank=True)
+    role_str = serializers.CharField(source='role', required=False, write_only=True)
     
     class Meta:
         model = User
-        fields = ['username', 'email', 'password', 'phone', 'role', 'region']
+        fields = ['username', 'email', 'password', 'phone', 'role', 'role_str', 'region', 'full_name']
     
     def validate_phone(self, value):
         if not value or value.strip() == "":
@@ -17,43 +24,55 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value):
         if value:
-            if User.objects.filter(email__iexact=value).exists():
+            if UserEmails.objects.filter(email__iexact=value).exists() or User.objects.filter(email__iexact=value).exists():
                 raise serializers.ValidationError("هذا البريد مسجل مسبقاً ولا يمكن إدخاله مرة أخرى.")
         return value
 
     def create(self, validated_data):
-        user = User.objects.create_user(**validated_data)
+        email = validated_data.pop('email', None)
+        role_val = validated_data.pop('role', None)
+        role_obj = None
+        if isinstance(role_val, Roles):
+            role_obj = role_val
+        elif isinstance(role_val, str):
+            role_obj = Roles.objects.filter(role_name=role_val).first()
+            
+        user = User.objects.create_user(role=role_obj, **validated_data)
+        if email:
+            user.email = email
+            user.save()
+            UserEmails.objects.create(user=user, email=email)
         return user
 
+
 class UserSerializer(serializers.ModelSerializer):
-    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    email = serializers.SerializerMethodField()
     phone = serializers.CharField(required=True)
+    role_name = serializers.SerializerMethodField()
+    role_id = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'phone', 'role', 
-                  'latitude', 'longitude', 'is_available', 'region',
+        fields = ['id', 'username', 'email', 'phone', 'role', 'role_id', 'role_name', 
+                  'latitude', 'longitude', 'is_available', 'region', 'full_name',
                   'blood_type', 'chronic_diseases', 'emergency_contact',
-                  'other_medical_notes'
-                  ,'first_name', 'last_name'
-                  ]
+                  'other_medical_notes', 'first_name', 'last_name']
+
+    def get_email(self, obj):
+        first_email = obj.emails.first()
+        return first_email.email if first_email else obj.email
+
+    def get_role_name(self, obj):
+        return obj.role.role_name if obj.role else (getattr(obj, 'role', None) or 'user')
+
+    def get_role_id(self, obj):
+        return obj.role.role_id if obj.role else None
 
     def validate_phone(self, value):
         if not value or value.strip() == "":
             raise serializers.ValidationError("رقم الهاتف إلزامي.")
         return value
 
-    def validate_email(self, value):
-        if value:
-            user = self.instance
-            qs = User.objects.filter(email__iexact=value)
-            if user:
-                qs = qs.exclude(id=user.id)
-            if qs.exists():
-                raise serializers.ValidationError("هذا البريد مسجل مسبقاً ولا يمكن إدخاله مرة أخرى.")
-        return value
-
-from .models import Incident
 
 class IncidentSerializer(serializers.ModelSerializer):
     reporter_username = serializers.CharField(source='reporter.username', read_only=True)
@@ -71,10 +90,11 @@ class IncidentSerializer(serializers.ModelSerializer):
     has_been_declined = serializers.SerializerMethodField()
     
     class Meta:
-        model = Incident
+        model = Incidents
         fields = ['id', 'reporter', 'reporter_username', 'reporter_phone', 'reporter_region',
                   'reporter_blood_type', 'reporter_chronic_diseases', 'reporter_emergency_contact',
-                  'reporter_other_notes', 'volunteer_username', 'volunteer_phone', 'gov_responder_username', 'latitude', 'longitude',
+                  'reporter_other_notes', 'volunteer', 'volunteer_username', 'volunteer_phone', 
+                  'gov_responder', 'gov_responder_username', 'latitude', 'longitude',
                   'injury_type', 'status', 'created_at', 'image', 'voice_note', 'is_declined_by_me', 'has_been_declined']
 
     def get_is_declined_by_me(self, obj):
